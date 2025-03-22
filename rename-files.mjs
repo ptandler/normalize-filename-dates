@@ -20,6 +20,28 @@ const stats = {
   totalErrors: 0
 };
 
+// Current year for reference
+const currentYear = new Date().getFullYear();
+
+/**
+ * Convert a 2-digit year to a 4-digit year, ensuring it's not in the future
+ * @param {string|number} shortYear - The 2-digit year
+ * @returns {string} - The 4-digit year
+ */
+function expandYear(shortYear) {
+  const year = parseInt(shortYear, 10);
+  
+  // Try with 2000s first
+  let fullYear = 2000 + year;
+  
+  // If the resulting year is in the future, use 1900s instead
+  if (fullYear > currentYear) {
+    fullYear = 1900 + year;
+  }
+  
+  return fullYear.toString();
+}
+
 /**
  * Main function to process directories
  */
@@ -258,8 +280,7 @@ function extractGermanStyleDate(filename) {
     
     // Ensure 4-digit year
     if (year.length === 2) {
-      // Assume 20xx for years less than 50, 19xx otherwise
-      year = parseInt(year) < 50 ? `20${year}` : `19${year}`;
+      year = expandYear(year);
     }
     
     // Ensure 2-digit month and day with leading zeros
@@ -335,10 +356,10 @@ function extractComplexHyphenatedDate(filename) {
       if (fullYear) {
         year = fullYear;
       } else if (shortYear) {
-        year = parseInt(shortYear) < 50 ? `20${shortYear}` : `19${shortYear}`;
+        year = expandYear(shortYear);
       } else {
         // If no year is found, use the current year
-        year = new Date().getFullYear().toString();
+        year = currentYear.toString();
       }
       
       // Get everything before and after the pattern
@@ -378,8 +399,7 @@ function extractGenericHyphenatedDate(filename) {
       // Determine the year
       let year = possibleYear;
       if (year.length === 2) {
-        // Assume 20xx for years less than 50, 19xx otherwise
-        year = parseInt(year) < 50 ? `20${year}` : `19${year}`;
+        year = expandYear(year);
       }
       
       // Get everything before and after the pattern
@@ -588,7 +608,7 @@ function extractPartialDate(filename) {
         };
       } else {
         // Default to current year if no year found
-        year = new Date().getFullYear().toString();
+        year = currentYear.toString();
       }
     }
     
@@ -643,7 +663,7 @@ function isValidDate(year, month, day) {
   }
   
   // Check ranges
-  if (y < 1900 || y > 2100 || m < 0 || m > 11 || d < 1 || d > 31) {
+  if (y < 1900 || y > currentYear || m < 0 || m > 11 || d < 1 || d > 31) {
     return false;
   }
   
