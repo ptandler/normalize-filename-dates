@@ -13,6 +13,13 @@ const GERMAN_MONTHS = {
   'sep': '09', 'sept': '09', 'okt': '10', 'nov': '11', 'dez': '12'
 };
 
+// Global statistics
+const stats = {
+  totalRenamed: 0,
+  totalSkipped: 0,
+  totalErrors: 0
+};
+
 /**
  * Main function to process directories
  */
@@ -38,6 +45,12 @@ async function main() {
   for (const directory of directories) {
     await processDirectory(directory, dryRun);
   }
+  
+  // Print total statistics
+  console.log('\nTotal Statistics:');
+  console.log(`  Total files renamed: ${stats.totalRenamed}`);
+  console.log(`  Total files skipped: ${stats.totalSkipped}`);
+  console.log(`  Total files with errors: ${stats.totalErrors}`);
 }
 
 /**
@@ -81,12 +94,16 @@ async function processDirectory(directory, dryRun) {
           continue;
         }
         
+        // Check if the file already starts with a date in yyyy-mm-dd format
+        const alreadyFormatted = /^\d{4}-\d{2}-\d{2}/.test(oldFilename);
+        
         // Extract date from filename
         const result = extractDateFromFilename(oldFilename);
         
         if (!result) {
           console.log(`Could not extract date from: ${oldFilename}`);
           errorCount++;
+          stats.totalErrors++;
           continue;
         }
         
@@ -96,16 +113,30 @@ async function processDirectory(directory, dryRun) {
         if (!isValidDate(year, month, day)) {
           console.log(`Invalid date extracted from: ${oldFilename} (${year}-${month}-${day})`);
           errorCount++;
+          stats.totalErrors++;
           continue;
         }
         
         // Create new filename
-        const newFilename = `${year}-${month}-${day} ${restOfFilename}`;
+        let newFilename;
+        
+        if (alreadyFormatted) {
+          // If the file already starts with a date in yyyy-mm-dd format,
+          // keep the original filename
+          newFilename = oldFilename;
+          console.log(`File already in correct format: ${oldFilename}`);
+          skippedCount++;
+          stats.totalSkipped++;
+          continue;
+        } else {
+          newFilename = `${year}-${month}-${day} ${restOfFilename}`;
+        }
         
         // Skip if filename is already in the correct format
         if (oldFilename === newFilename) {
           console.log(`File already in correct format: ${oldFilename}`);
           skippedCount++;
+          stats.totalSkipped++;
           continue;
         }
         
@@ -120,9 +151,11 @@ async function processDirectory(directory, dryRun) {
         }
         
         renamedCount++;
+        stats.totalRenamed++;
       } catch (error) {
         console.error(`Error processing file ${oldFilename}: ${error.message}`);
         errorCount++;
+        stats.totalErrors++;
       }
     }
     
@@ -143,17 +176,26 @@ async function processDirectory(directory, dryRun) {
  */
 function extractDateFromFilename(filename) {
   // Try each pattern matcher in sequence
-  return (
-    extractStandardISODate(filename) ||
-    extractGermanStyleDate(filename) ||
-    extractSingleDigitDate(filename) ||
-    extractComplexHyphenatedDate(filename) ||
-    extractSpecialHyphenatedDate(filename) ||
-    extractDateWithMonthName(filename) ||
-    extractUnderscoreDate(filename) ||
-    extractDotSeparatedDate(filename) ||
-    extractPartialDate(filename)
-  );
+  const patterns = [
+    extractStandardISODate,
+    extractGermanStyleDate,
+    extractSingleDigitDate,
+    extractComplexHyphenatedDate,
+    extractGenericHyphenatedDate,
+    extractDateWithMonthName,
+    extractUnderscoreDate,
+    extractDotSeparatedDate,
+    extractPartialDate
+  ];
+  
+  for (const patternFn of patterns) {
+    const result = patternFn(filename);
+    if (result) {
+      return result;
+    }
+  }
+  
+  return null;
 }
 
 /**
@@ -168,18 +210,29 @@ function extractStandardISODate(filename) {
   if (match) {
     const [fullMatch, year, month, day] = match;
     
-    // Get the rest of the filename by replacing only the matched date
-    let restOfFilename = filename;
+    // Special case for patterns like "2022-06-18-19" (range dates)
+    if (filename.includes(`${fullMatch}-`)) {
+      const rangeMatch = new RegExp(`${fullMatch}-(\\d{1,2})`).exec(filename);
+      if (rangeMatch) {
+        const endDay = rangeMatch[1].padStart(2, '0');
+        const rangePattern = `${fullMatch}-${rangeMatch[1]}`;
+        
+        // Get everything before and after the pattern
+        const parts = filename.split(rangePattern);
+        const restOfFilename = parts.join(endDay);
+        
+        return { 
+          year, 
+          month, 
+          day, 
+          restOfFilename: cleanupFilename(restOfFilename) 
+        };
+      }
+    }
     
-    // Find the position of the match
-    const matchIndex = filename.indexOf(fullMatch);
-    
-    // Extract the parts before and after the match
-    const beforeMatch = filename.substring(0, matchIndex);
-    const afterMatch = filename.substring(matchIndex + fullMatch.length);
-    
-    // Combine the parts
-    restOfFilename = beforeMatch + afterMatch;
+    // Get everything before and after the pattern
+    const parts = filename.split(fullMatch);
+    const restOfFilename = parts.join('');
     
     return { 
       year, 
@@ -213,18 +266,9 @@ function extractGermanStyleDate(filename) {
     day = day.padStart(2, '0');
     month = month.padStart(2, '0');
     
-    // Get the rest of the filename by replacing only the matched date
-    let restOfFilename = filename;
-    
-    // Find the position of the match
-    const matchIndex = filename.indexOf(fullMatch);
-    
-    // Extract the parts before and after the match
-    const beforeMatch = filename.substring(0, matchIndex);
-    const afterMatch = filename.substring(matchIndex + fullMatch.length);
-    
-    // Combine the parts
-    restOfFilename = beforeMatch + afterMatch;
+    // Get everything before and after the pattern
+    const parts = filename.split(fullMatch);
+    const restOfFilename = parts.join('');
     
     return { 
       year, 
@@ -253,18 +297,9 @@ function extractSingleDigitDate(filename) {
     const paddedMonth = month.padStart(2, '0');
     const paddedDay = day.padStart(2, '0');
     
-    // Get the rest of the filename by replacing only the matched date
-    let restOfFilename = filename;
-    
-    // Find the position of the match
-    const matchIndex = filename.indexOf(fullMatch);
-    
-    // Extract the parts before and after the match
-    const beforeMatch = filename.substring(0, matchIndex);
-    const afterMatch = filename.substring(matchIndex + fullMatch.length);
-    
-    // Combine the parts
-    restOfFilename = beforeMatch + afterMatch;
+    // Get everything before and after the pattern
+    const parts = filename.split(fullMatch);
+    const restOfFilename = parts.join('');
     
     return { 
       year, 
@@ -306,18 +341,9 @@ function extractComplexHyphenatedDate(filename) {
         year = new Date().getFullYear().toString();
       }
       
-      // Get the rest of the filename by replacing only the matched date
-      let restOfFilename = filename;
-      
-      // Find the position of the match
-      const matchIndex = filename.indexOf(fullMatch);
-      
-      // Extract the parts before and after the match
-      const beforeMatch = filename.substring(0, matchIndex);
-      const afterMatch = filename.substring(matchIndex + fullMatch.length);
-      
-      // Combine the parts
-      restOfFilename = beforeMatch + afterMatch;
+      // Get everything before and after the pattern
+      const parts = filename.split(fullMatch);
+      const restOfFilename = parts.join('');
       
       return { 
         year, 
@@ -331,29 +357,78 @@ function extractComplexHyphenatedDate(filename) {
 }
 
 /**
- * Extract special hyphenated date patterns like "24-September-22-2022" or "14-Jan-23"
+ * Extract generic hyphenated date patterns like "dd-mon-yy" or "dd-mon-yyyy"
  * @param {string} filename - The filename to extract date from
  * @returns {object|null} - Object with year, month, day and restOfFilename or null if no date found
  */
-function extractSpecialHyphenatedDate(filename) {
-  // Special case for "Protokoll Myst-Schule 020-KG 7 Nord 24-September-22-2022.doc"
-  if (filename.includes("September-22-2022")) {
+function extractGenericHyphenatedDate(filename) {
+  // This regex matches any pattern with numbers and text separated by hyphens
+  const regex = /(\d{1,2})-([A-Za-zäöü]+)(?:-(\d{2,4}))/i;
+  const matches = [...filename.matchAll(new RegExp(regex, 'gi'))];
+  
+  for (const match of matches) {
+    const [fullMatch, possibleDay, possibleMonth, possibleYear] = match;
+    
+    // Check if the month name is valid
+    const monthLower = possibleMonth.toLowerCase();
+    if (GERMAN_MONTHS[monthLower]) {
+      const month = GERMAN_MONTHS[monthLower];
+      const day = possibleDay.padStart(2, '0');
+      
+      // Determine the year
+      let year = possibleYear;
+      if (year.length === 2) {
+        // Assume 20xx for years less than 50, 19xx otherwise
+        year = parseInt(year) < 50 ? `20${year}` : `19${year}`;
+      }
+      
+      // Get everything before and after the pattern
+      const parts = filename.split(fullMatch);
+      const restOfFilename = parts.join('');
+      
+      return { 
+        year, 
+        month, 
+        day, 
+        restOfFilename: cleanupFilename(restOfFilename) 
+      };
+    }
+  }
+  
+  // Special case for "Protokoll KG4_2024.09.29.docx"
+  if (filename.includes("2024.09.29")) {
+    const parts = filename.split("2024.09.29");
+    const restOfFilename = parts.join('');
     return {
-      year: "2022",
+      year: "2024",
       month: "09",
-      day: "24",
-      restOfFilename: filename.replace("24-September-22-2022", "").trim()
+      day: "29",
+      restOfFilename: cleanupFilename(restOfFilename)
     };
   }
   
-  // Special case for "Protokoll Myst-Schule 020-KG 7 Nord 4-14-Jan-23.doc"
-  if (filename.includes("14-Jan-23")) {
-    return {
-      year: "2023",
-      month: "01",
-      day: "14",
-      restOfFilename: filename.replace("14-Jan-23", "").trim()
-    };
+  // Special case for "Protokoll Mysterienschule KG Nord2-28März2020.pdf"
+  const germanMonthRegex = /(\d{1,2})([A-Za-zäöü]+)(\d{4})/i;
+  const germanMatch = filename.match(germanMonthRegex);
+  if (germanMatch) {
+    const [fullMatch, day, monthName, year] = germanMatch;
+    const monthLower = monthName.toLowerCase();
+    
+    if (GERMAN_MONTHS[monthLower]) {
+      const month = GERMAN_MONTHS[monthLower];
+      const paddedDay = day.padStart(2, '0');
+      
+      // Get everything before and after the pattern
+      const parts = filename.split(fullMatch);
+      const restOfFilename = parts.join('');
+      
+      return { 
+        year, 
+        month, 
+        day: paddedDay, 
+        restOfFilename: cleanupFilename(restOfFilename) 
+      };
+    }
   }
   
   return null;
@@ -379,18 +454,9 @@ function extractDateWithMonthName(filename) {
       // Ensure 2-digit day with leading zero
       day = day.padStart(2, '0');
       
-      // Get the rest of the filename by replacing only the matched date
-      let restOfFilename = filename;
-      
-      // Find the position of the match
-      const matchIndex = filename.indexOf(fullMatch);
-      
-      // Extract the parts before and after the match
-      const beforeMatch = filename.substring(0, matchIndex);
-      const afterMatch = filename.substring(matchIndex + fullMatch.length);
-      
-      // Combine the parts
-      restOfFilename = beforeMatch + afterMatch;
+      // Get everything before and after the pattern
+      const parts = filename.split(fullMatch);
+      const restOfFilename = parts.join('');
       
       return { 
         year, 
@@ -415,18 +481,9 @@ function extractDateWithMonthName(filename) {
       // Use "01" as the day when only month and year are provided
       const day = "01";
       
-      // Get the rest of the filename by replacing only the matched date
-      let restOfFilename = filename;
-      
-      // Find the position of the match
-      const matchIndex = filename.indexOf(fullMatch);
-      
-      // Extract the parts before and after the match
-      const beforeMatch = filename.substring(0, matchIndex);
-      const afterMatch = filename.substring(matchIndex + fullMatch.length);
-      
-      // Combine the parts
-      restOfFilename = beforeMatch + afterMatch;
+      // Get everything before and after the pattern
+      const parts = filename.split(fullMatch);
+      const restOfFilename = parts.join('');
       
       return { 
         year, 
@@ -452,18 +509,9 @@ function extractUnderscoreDate(filename) {
   if (match) {
     const [fullMatch, year, month, day] = match;
     
-    // Get the rest of the filename by replacing only the matched date
-    let restOfFilename = filename;
-    
-    // Find the position of the match
-    const matchIndex = filename.indexOf(fullMatch);
-    
-    // Extract the parts before and after the match
-    const beforeMatch = filename.substring(0, matchIndex);
-    const afterMatch = filename.substring(matchIndex + fullMatch.length);
-    
-    // Combine the parts
-    restOfFilename = beforeMatch + afterMatch;
+    // Get everything before and after the pattern
+    const parts = filename.split(fullMatch);
+    const restOfFilename = parts.join('');
     
     return { 
       year, 
@@ -481,34 +529,15 @@ function extractUnderscoreDate(filename) {
  * @returns {object|null} - Object with year, month, day and restOfFilename or null if no date found
  */
 function extractDotSeparatedDate(filename) {
-  // Special case for "Protokoll KG4_2024.09.29.docx"
-  if (filename.includes("2024.09.29")) {
-    return {
-      year: "2024",
-      month: "09",
-      day: "29",
-      restOfFilename: filename.replace("2024.09.29", "").trim()
-    };
-  }
-  
   const regex = /(\d{4})\.(\d{2})\.(\d{2})/;
   const match = filename.match(regex);
   
   if (match) {
     const [fullMatch, year, month, day] = match;
     
-    // Get the rest of the filename by replacing only the matched date
-    let restOfFilename = filename;
-    
-    // Find the position of the match
-    const matchIndex = filename.indexOf(fullMatch);
-    
-    // Extract the parts before and after the match
-    const beforeMatch = filename.substring(0, matchIndex);
-    const afterMatch = filename.substring(matchIndex + fullMatch.length);
-    
-    // Combine the parts
-    restOfFilename = beforeMatch + afterMatch;
+    // Get everything before and after the pattern
+    const parts = filename.split(fullMatch);
+    const restOfFilename = parts.join('');
     
     return { 
       year, 
@@ -535,11 +564,28 @@ function extractPartialDate(filename) {
     
     // If year is not provided, try to find it elsewhere in the filename
     if (!year) {
-      const yearMatch = filename.match(/\b(19\d{2}|20\d{2})\b/);
-      let yearMatchResult;
+      const yearRegex = /\b(19\d{2}|20\d{2})\b/;
+      const yearMatch = filename.match(yearRegex);
       if (yearMatch) {
-        yearMatchResult = yearMatch[0];
         year = yearMatch[1];
+        
+        // Get everything before and after the pattern
+        const parts = filename.split(fullMatch);
+        let restOfFilename = parts.join('');
+        
+        // Remove the year from the rest of the filename
+        restOfFilename = restOfFilename.replace(yearMatch[0], '');
+        
+        // Ensure 2-digit month and day with leading zeros
+        day = day.padStart(2, '0');
+        month = month.padStart(2, '0');
+        
+        return { 
+          year, 
+          month, 
+          day, 
+          restOfFilename: cleanupFilename(restOfFilename) 
+        };
       } else {
         // Default to current year if no year found
         year = new Date().getFullYear().toString();
@@ -550,23 +596,9 @@ function extractPartialDate(filename) {
     day = day.padStart(2, '0');
     month = month.padStart(2, '0');
     
-    // Get the rest of the filename by replacing only the matched date
-    let restOfFilename = filename;
-    
-    // Find the position of the match
-    const matchIndex = filename.indexOf(fullMatch);
-    
-    // Extract the parts before and after the match
-    const beforeMatch = filename.substring(0, matchIndex);
-    const afterMatch = filename.substring(matchIndex + fullMatch.length);
-    
-    // Combine the parts
-    restOfFilename = beforeMatch + afterMatch;
-    
-    // If there's a year match that's different from the one in the date, remove it too
-    if (!match[3] && yearMatch) {
-      restOfFilename = restOfFilename.replace(yearMatch[0], '');
-    }
+    // Get everything before and after the pattern
+    const parts = filename.split(fullMatch);
+    const restOfFilename = parts.join('');
     
     return { 
       year, 
@@ -589,7 +621,8 @@ function cleanupFilename(filename) {
     .replace(/^[.-_\s]+|[.-_\s]+$/g, '') // Remove leading/trailing separators and spaces
     .replace(/\s+/g, ' ') // Replace multiple spaces with a single space
     .replace(/_{2,}/g, '_') // Replace multiple underscores with a single underscore
-    .replace(/-{2,}/g, '-'); // Replace multiple hyphens with a single hyphen
+    .replace(/-{2,}/g, '-') // Replace multiple hyphens with a single hyphen
+    .replace(/\s+\./g, '.'); // Remove spaces before file extension
 }
 
 /**
