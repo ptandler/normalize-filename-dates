@@ -4,12 +4,14 @@ import fs from 'fs/promises';
 import path from 'path';
 
 // German month names for parsing
+// noinspection JSNonASCIINames
 const GERMAN_MONTHS = {
   'januar': '01', 'februar': '02', 'märz': '03', 'april': '04',
   'mai': '05', 'juni': '06', 'juli': '07', 'august': '08',
   'september': '09', 'oktober': '10', 'november': '11', 'dezember': '12',
   'jan': '01', 'feb': '02', 'mär': '03', 'apr': '04',
-  'mai': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+  // 'mai': '05', // dup: has only 3 letters :-)
+  'jun': '06', 'jul': '07', 'aug': '08',
   'sep': '09', 'sept': '09', 'okt': '10', 'nov': '11', 'dez': '12'
 };
 
@@ -283,7 +285,6 @@ function extractStandardISODate(filename) {
     if (filename.includes(`${fullMatch}-`)) {
       const rangeMatch = new RegExp(`${fullMatch}-(\\d{1,2})`).exec(filename);
       if (rangeMatch) {
-        const endDay = rangeMatch[1].padStart(2, '0');
         const rangePattern = `${fullMatch}-${rangeMatch[1]}`;
         
         // Get everything before and after the pattern
@@ -441,7 +442,7 @@ function extractComplexHyphenatedDate(filename) {
 function extractGenericHyphenatedDate(filename) {
   // This regex matches any pattern with numbers and text separated by hyphens
   // Only match month names from our list
-  const regex = new RegExp(`(\\d{1,2})-(${MONTH_NAMES_PATTERN})(?:-(\\d{2,4}))`, 'i'); // TODO: ensure no digit before or after
+  const regex = new RegExp(`(\d{1,2})-(${MONTH_NAMES_PATTERN})-(\d{2,4})`, 'i'); // TODO: ensure no digit before or after
   const matches = [...filename.matchAll(new RegExp(regex, 'gi'))];
   
   for (const match of matches) {
