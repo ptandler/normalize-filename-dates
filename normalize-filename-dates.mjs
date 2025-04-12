@@ -45,7 +45,7 @@ function debugLog(message) {
 /**
  * Convert a 2-digit year to a 4-digit year, ensuring it's not in the future
  * 
- * TODO: if the year is missing, guess it from the file modified (or creation) date
+ * TODO: if the year is missing, guess it from the file modified date
  * TODO: ensure that this is always called; I think we can call this inside processFile()
  * 
  * @param {string|number} shortYear - The 2-digit year
@@ -76,6 +76,11 @@ async function main() {
     : ['.'];
   
   let dryRun = true;
+
+  // TODO: maybe use some of the existing, production-proven libs for command-line argument handling so that we also get `--help` etc? 
+  //       On the other hand: This way the script needs no external dependencies.
+  //       However, I could add also packaging into a script for distribution. As it's quite long already, I could split source
+  //       into several files, e.g. one file per pattern matching rule. This would improve maintainability.
   
   // Check if --execute flag is present
   if (directories.includes('--execute')) {
@@ -93,8 +98,8 @@ async function main() {
     directories.splice(debugIndex, 1);
   }
   
-  console.log(`Mode: ${dryRun ? 'DRY RUN (no changes will be made)' : 'EXECUTE (files will be renamed)'}`);
-  console.log(`Debug Mode: ${debugMode ? 'ON' : 'OFF'}`);
+  console.log(`Mode: ${dryRun ? 'DRY RUN (no changes will be made -> pass `--execute` flag to rename files)' : 'EXECUTE (files will be renamed)'}`);
+  console.log(`Debug Mode: ${debugMode ? 'ON' : 'OFF (pass `--debug` flag to get verbose output)'}`);
   console.log(`Processing directories: ${directories.join(', ')}\n`);
   
   for (const directory of directories) {
